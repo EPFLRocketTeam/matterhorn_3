@@ -1,0 +1,33 @@
+.settings/
+Debug/
+Drivers/
+Middlewares/
+startup/
+.cproject
+.mxproject
+.project
+cmake-build-*/
+.vs/
+.idea/
+
+mx.scratch
+nosecone_fw.elf*
+STM32F405VG_FLASH.ld
+
+# ADDED BY ERIC
+*.xml
+STM32F405VGTx_FLASH.ld
+*.swp
+*.orig
+*BACKUP*
+*BASE*
+*LOCAL*
+*REMOTE*
+*.osx.project
+*.bak
+_FLASH.ld
+
+# MATLAB
+*~
+
+*.elf*
