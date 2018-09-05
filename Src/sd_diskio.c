@@ -64,7 +64,7 @@
  * in case of errors in either BSP_SD_ReadCpltCallback() or BSP_SD_WriteCpltCallback()
  * the value by default is as defined in the BSP platform driver otherwise 30 secs
  */
-#define SD_TIMEOUT 10 * 1000
+#define SD_TIMEOUT 30 * 1000
 
 #define SD_DEFAULT_BLOCK_SIZE 512
 
@@ -355,7 +355,22 @@ DRESULT SD_ioctl(BYTE lun, BYTE cmd, void *buff)
 /* USER CODE END afterIoctlSection */
 
 /* USER CODE BEGIN callbackSection */ 
-/* can be used to modify / following code or add new code */
+
+void HAL_SD_TxCpltCallback(SD_HandleTypeDef *hsd)
+{
+  osMessagePut(SDQueueID, WRITE_CPLT_MSG, osWaitForever);
+}
+
+/**
+ * @brief Rx Transfer completed callbacks
+ * @param hsd Pointer SD handle
+ * @retval None
+ */
+void HAL_SD_RxCpltCallback(SD_HandleTypeDef *hsd)
+{
+  osMessagePut(SDQueueID, READ_CPLT_MSG, osWaitForever);
+}
+
 /* USER CODE END callbackSection */
 /**
   * @brief Tx Transfer completed callbacks
