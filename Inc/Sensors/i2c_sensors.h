@@ -28,16 +28,8 @@
 #define DIFF_PRESS_OUTPUT_MASK 0x3fff
 
 #define PSI_TO_PASCAL_CONVERSION_FACTOR 6894.76
-void initBarometer ();
-
-osStatus i2cTransmitCommand (uint8_t command, uint16_t size, uint8_t device_address);
-
-osStatus i2cReceive (uint8_t* rxBuffer, uint16_t size, uint8_t device_address);
-
-osStatus processD1D2 (uint32_t d1, uint32_t d2, BARO_data* ret);
+void initI2cDevices ();
 
 float altitudeFromPressure (float pressure_hPa);
-
-float32_t interpolatePitotReadings (float32_t low_range_pressure, float32_t high_range_pressure);
 
 #endif /* SENSORS_PRESSURESENSORS_BAROMETER_H_ */

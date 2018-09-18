@@ -48,7 +48,12 @@
 /* Exported functions ------------------------------------------------------- */
 
 void SysTick_Handler(void);
+void DMA1_Stream0_IRQHandler(void);
+void DMA1_Stream6_IRQHandler(void);
+void I2C1_EV_IRQHandler(void);
+void I2C1_ER_IRQHandler(void);
 void USART1_IRQHandler(void);
+void USART2_IRQHandler(void);
 void TIM8_TRG_COM_TIM14_IRQHandler(void);
 void SDIO_IRQHandler(void);
 void DMA2_Stream3_IRQHandler(void);

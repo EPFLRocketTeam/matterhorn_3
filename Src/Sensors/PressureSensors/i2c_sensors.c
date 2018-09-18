@@ -12,22 +12,19 @@
 #include <Sensors/i2c_sensors.h>
 #include "stm32f4xx_hal.h"
 #include "Misc/Common.h"
+
+#include <Sensors/BME280/bme280.h>
 #if(SIMULATION == 1)
 #include <Misc/SimData.h>
 #endif
 #include <Misc/rocket_constants.h>
 
-extern I2C_HandleTypeDef hi2c2;
+extern I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef* hi2c;
-//extern osSemaphoreId pressureSensorI2cSemHandle;
+extern osSemaphoreId i2cSensorsSemHandle;
 extern BARO_data BARO_buffer[];
-extern float32_t PITOT_buffer[];
-extern volatile float32_t high_range_pressure;
 
-/* i2c address of module */
-#define BAROMETER_ADDR 0xEC
-#define BAROMETER_OSR 3
-#define I2C_TIMEOUT 5 //ms
+#define I2C_TIMEOUT 100 //ms
 
 #define MAX_TEMPERATURE 85
 #define MIN_TEMPERATURE -40
@@ -35,22 +32,71 @@ extern volatile float32_t high_range_pressure;
 #define MAX_PRESSURE 1200
 #define MIN_PRESSURE 100
 
-/* delay to wait for sampling to complete, on each OSR level */
-const uint8_t SamplingDelayMs[6] =
-  { 1, 2, 3, 5, 9, 17 };
-uint16_t PROM_DATA[7]; // the barometer contains calibration data (from the factory), and we load them in this array when starting the barometer
-uint8_t rxBuffer[5];
-
-/* module commands */
-#define BAROMETER_RESET 0x1E
-#define CMD_PROM_READ(offset) (0xA0 + (offset << 1)) /* Offset 0-7 */
-#define CMD_START_D1(oversample_level) (0x40 + 2*(int)oversample_level)
-#define CMD_START_D2(oversample_level) (0x50 + 2*(int)oversample_level)
-#define CMD_READ_ADC 0x00
-
-void initBarometer ()
+int8_t stm32_i2c_read (uint8_t dev_id, uint8_t reg_addr, uint8_t *data, uint16_t len)
 {
-  hi2c = &hi2c2;
+  HAL_I2C_Mem_Read_DMA(hi2c, dev_id << 1, reg_addr, I2C_MEMADD_SIZE_8BIT, data, len);
+  return osSemaphoreWait (i2cSensorsSemHandle, I2C_TIMEOUT);
+}
+
+int8_t stm32_i2c_write (uint8_t dev_id, uint8_t reg_addr, uint8_t *data, uint16_t len)
+{
+  HAL_I2C_Mem_Write (hi2c, dev_id << 1, reg_addr, I2C_MEMADD_SIZE_8BIT, data, len, I2C_TIMEOUT);
+}
+
+void stm32_delay_ms (uint32_t period)
+{
+  osDelay (period);
+}
+
+extern UART_HandleTypeDef huart2;
+
+void print_sensor_data (struct bme280_data *comp_data)
+{
+#ifdef BME280_FLOAT_ENABLE
+  static char buf[100];
+  sprintf (buf, "temp %0.2f, p %0.2f, hum %0.2f\r\n", (float) comp_data->temperature, (float) comp_data->pressure, comp_data->humidity);
+  HAL_UART_Transmit_DMA(&huart2, buf, strlen(buf));
+#else
+  sprintf(buf, "temp %ld, p %ld, hum %ld\r\n",comp_data->temperature, comp_data->pressure, comp_data->humidity);
+#endif
+}
+
+void initI2cDevices ()
+{
+  hi2c = &hi2c1;
+
+  struct bme280_dev dev;
+  int8_t rslt = BME280_OK;
+
+  dev.dev_id = BME280_I2C_ADDR_PRIM;
+  dev.intf = BME280_I2C_INTF;
+  dev.read = &stm32_i2c_read;
+  dev.write = &stm32_i2c_write;
+  dev.delay_ms = &stm32_delay_ms;
+
+  rslt = bme280_init (&dev);
+
+  uint8_t settings_sel;
+  struct bme280_data comp_data;
+
+  /* Recommended mode of operation: Indoor navigation */
+  dev.settings.osr_h = BME280_OVERSAMPLING_1X;
+  dev.settings.osr_p = BME280_OVERSAMPLING_16X;
+  dev.settings.osr_t = BME280_OVERSAMPLING_2X;
+  dev.settings.filter = BME280_FILTER_COEFF_16;
+
+  settings_sel = BME280_OSR_PRESS_SEL | BME280_OSR_TEMP_SEL | BME280_OSR_HUM_SEL | BME280_FILTER_SEL;
+
+  rslt = bme280_set_sensor_settings (settings_sel, &dev);
+
+  while (1)
+    {
+      rslt = bme280_set_sensor_mode (BME280_FORCED_MODE, &dev);
+      /* Wait for the measurement to complete and print data @25Hz */
+      HAL_Delay (40);
+      rslt = bme280_get_sensor_data (BME280_ALL, &comp_data, &dev);
+      print_sensor_data (&comp_data);
+    }
 
 }
 
@@ -105,126 +151,21 @@ void TK_fetch_i2c ()
       osDelay (SimData[sensorCounter][SIM_TIMESTAMP] - SimData[sensorCounter - 1][SIM_TIMESTAMP] - 1);
     }
 
-#endif
+# else
+  osSemaphoreWait (i2cSensorsSemHandle, 1); // make sure the semaphore is taken at the start of the loop
 
-#if(SIMULATION == 0)
+  initI2cDevices ();
+
   uint32_t samplingStart, elapsed;
-  //osSemaphoreWait (pressureSensorI2cSemHandle, 1); // make sure the semaphore is taken at the start of the loop
 
   for (;;)
     {
 
-      //i2cTransmitCommand (CMD_START_D2(BAROMETER_OSR));
       samplingStart = HAL_GetTick ();
-      // D2 command started, we need to wait a few milliseconds
-
-
-      if ((elapsed = (HAL_GetTick () - samplingStart)) < SamplingDelayMs[BAROMETER_OSR])
-        {
-          osDelay (SamplingDelayMs[BAROMETER_OSR] - elapsed);
-        }
-
-//      i2cTransmitCommand (CMD_READ_ADC);
-      //delayUs (40);
-      i2cReceive (rxBuffer, 3, BAROMETER_ADDR);
-      if (rxBuffer[0] == 0)
-        {
-          continue;
-        }
-      uint32_t d2 = rxBuffer[0] << 16 | rxBuffer[1] << 8 | rxBuffer[2];
-
-//      i2cTransmitCommand (CMD_START_D1(BAROMETER_OSR));
-      samplingStart = HAL_GetTick ();
-      if ((elapsed = (HAL_GetTick () - samplingStart)) < SamplingDelayMs[BAROMETER_OSR])
-        {
-          osDelay (SamplingDelayMs[BAROMETER_OSR] - elapsed);
-        }
-
-//      i2cTransmitCommand (CMD_READ_ADC);
-      //delayUs (10);
-      i2cReceive (rxBuffer, 3, BAROMETER_ADDR);
-      if (rxBuffer[0] == 0)
-        {
-          continue;
-        }
-      uint32_t d1 = rxBuffer[0] << 16 | rxBuffer[1] << 8 | rxBuffer[2];
-
-      BARO_data* newBaroData = &BARO_buffer[(currentBaroSeqNumber + 1) % CIRC_BUFFER_SIZE];
-      if (processD1D2 (d1, d2, newBaroData) == osOK)
-        {
-          currentBaroSeqNumber++;
-          currentBaroTimestamp = HAL_GetTick ();
-        }
-      else
-        {
-          failedReading++;
-          //TODO: reset the barometer
-        }
 
     }
 
 #endif
-}
-
-osStatus processD1D2 (uint32_t d1, uint32_t d2, BARO_data* ret)
-{
-  int64_t dt = d2 - PROM_DATA[5] * (1L << 8);
-  int32_t temp = 2000 + (dt * PROM_DATA[6]) / (1L << 23);
-
-  /* Second order temperature compensation */
-  int64_t t2;
-  if (temp >= 2000)
-    {
-      /* High temperature */
-      t2 = 5 * (dt * dt) / (1LL << 38);
-    }
-  else
-    {
-      /* Low temperature */
-      t2 = 3 * (dt * dt) / (1LL << 33);
-    }
-
-  ret->temperature = (float32_t) (temp - t2) / 100.0f;
-
-  int64_t off = PROM_DATA[2] * (1LL << 17) + (PROM_DATA[4] * dt) / (1LL << 6);
-  int64_t sens = PROM_DATA[1] * (1LL << 16) + (PROM_DATA[3] * dt) / (1LL << 7);
-
-  /* Second order temperature compensation for pressure */
-  if (temp < 2000)
-    {
-      /* Low temperature */
-      int32_t tx = temp - 2000;
-      tx *= tx;
-      int32_t off2 = 61 * tx / (1 << 4);
-      int32_t sens2 = 29 * tx / (1 << 4);
-      if (temp < -1500)
-        {
-          /* Very low temperature */
-          tx = temp + 1500;
-          tx *= tx;
-          off2 += 17 * tx;
-          sens2 += 9 * tx;
-        }
-      off -= off2;
-      sens -= sens2;
-    }
-
-  int32_t p = ((int64_t) d1 * sens / (1LL << 21) - off) / (1LL << 15);
-  ret->pressure = (float32_t) p / 100.0; //pressure in mbar (=hPa)
-
-  ret->altitude = altitudeFromPressure (ret->pressure);
-
-  if ((ret->temperature > MAX_TEMPERATURE) | (ret->temperature < MIN_TEMPERATURE) | (ret->pressure > MAX_PRESSURE)
-      | (ret->pressure < MIN_PRESSURE))
-    {
-      return osErrorOS;
-    }
-
-  else
-    {
-      return osOK;
-    }
-
 }
 
 inline float altitudeFromPressure (float pressure_hPa)
@@ -241,42 +182,38 @@ inline float altitudeFromPressure (float pressure_hPa)
     }
 }
 
-osStatus i2cReceive (uint8_t* rxBuffer, uint16_t size, uint8_t device_address)
-{
-  HAL_I2C_Master_Receive_DMA (hi2c, device_address, rxBuffer, size);
-  return osOK;
-  //TODO:SEMAPHORE
-  //return osSemaphoreWait (pressureSensorI2cSemHandle, I2C_TIMEOUT);
-}
-
-osStatus i2cTransmitCommand (uint8_t command, uint16_t size, uint8_t device_address)
-{
-  HAL_I2C_Master_Transmit_DMA (hi2c, BAROMETER_ADDR, &command, 1);
-  //return osSemaphoreWait (pressureSensorI2cSemHandle, I2C_TIMEOUT);
-  //TODO: semaphore
-  return osOK;
-}
 
 /*
-void HAL_I2C_MasterTxCpltCallback (I2C_HandleTypeDef *hi2c)
+ void HAL_I2C_MasterTxCpltCallback (I2C_HandleTypeDef *hi2c)
+ {
+ osSemaphoreRelease (pressureSensorI2cSemHandle);
+ }
+ */
+
+/*void HAL_I2C_MasterRxCpltCallback (I2C_HandleTypeDef *hi2c)
 {
-  osSemaphoreRelease (pressureSensorI2cSemHandle);
+  osSemaphoreRelease (i2cSensorsSemHandle);
 }
 */
 
-void HAL_I2C_MasterRxCpltCallback (I2C_HandleTypeDef *hi2c)
-{
-  //TODO:SEMAPHORE
-  //osSemaphoreRelease (pressureSensorI2cSemHandle);
+void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c){
+  osSemaphoreRelease (i2cSensorsSemHandle);
 }
 
+
+void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+{
+  osSemaphoreRelease (i2cSensorsSemHandle);
+}
+
+/*
 void HAL_I2C_ErrorCallback (I2C_HandleTypeDef *hi2c)
 {
-//  osSemaphoreRelease (pressureSensorI2cSemHandle);
+  osSemaphoreRelease (i2cSensorsSemHandle);
 }
 
 void HAL_I2C_AbortCpltCallback (I2C_HandleTypeDef *hi2c)
 {
-  //osSemaphoreRelease (pressureSensorI2cSemHandle);
+  //osSemaphoreRelease (i2cSensorsSemHandle);
 }
-
+*/

@@ -12,10 +12,13 @@
 
 #ifdef __cplusplus
 extern "C"
-{
+  {
 #endif
 
-  void TK_data (const void* args);
+void TK_data (const void* args);
+
+osStatus initSdFile ();
+
 
 #ifdef __cplusplus
 }
