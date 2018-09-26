@@ -2,7 +2,7 @@
  * datastructs.h
  *
  *  Created on: 5 Apr 2018
- *      Author: Clément Nussbaumer
+ *      Author: Clï¿½ment Nussbaumer
  */
 
 #ifndef INCLUDE_DATASTRUCTS_H_

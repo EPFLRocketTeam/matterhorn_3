@@ -61,8 +61,8 @@ void MX_FATFS_Init(void)
 {
   /*## FatFS: Link the SD driver ###########################*/
   retSD = FATFS_LinkDriver(&SD_Driver, SDPath);
+
   /* USER CODE BEGIN Init */
-  osDelay(200);
   /* USER CODE END Init */
 }
 

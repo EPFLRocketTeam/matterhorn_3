@@ -78,6 +78,7 @@ DMA_HandleTypeDef hdma_usart2_tx;
 osThreadId defaultTaskHandle;
 osThreadId fetch_i2c_sensoHandle;
 osThreadId data_mgmtHandle;
+osThreadId airbrakes_ctrlHandle;
 osSemaphoreId i2cSensorsSemHandle;
 
 /* USER CODE BEGIN PV */
@@ -104,6 +105,7 @@ static void MX_USART1_UART_Init(void);
 void StartDefaultTask(void const * argument);
 extern void TK_fetch_i2c(void const * argument);
 extern void TK_data(void const * argument);
+extern void TK_ab_controller(void const * argument);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -183,6 +185,10 @@ int main(void)
   /* definition and creation of data_mgmt */
   osThreadDef(data_mgmt, TK_data, osPriorityNormal, 0, 1024);
   data_mgmtHandle = osThreadCreate(osThread(data_mgmt), NULL);
+
+  /* definition and creation of airbrakes_ctrl */
+  osThreadDef(airbrakes_ctrl, TK_ab_controller, osPriorityNormal, 0, 1024);
+  airbrakes_ctrlHandle = osThreadCreate(osThread(airbrakes_ctrl), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -382,8 +388,8 @@ static void MX_USART2_UART_Init(void)
 static void MX_DMA_Init(void) 
 {
   /* DMA controller clock enable */
-  __HAL_RCC_DMA2_CLK_ENABLE();
   __HAL_RCC_DMA1_CLK_ENABLE();
+  __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
   /* DMA1_Stream0_IRQn interrupt configuration */
@@ -463,9 +469,6 @@ void StartDefaultTask(void const * argument)
   MX_FATFS_Init();
 
   /* USER CODE BEGIN 5 */
-
-  initSdFile ();
-
 
   for (;;)
     {

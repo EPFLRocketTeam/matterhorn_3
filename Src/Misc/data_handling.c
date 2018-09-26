@@ -21,14 +21,23 @@ extern osMessageQId xBeeQueueHandle;
 extern int startSimulation;
 extern volatile float32_t high_range_pressure;
 
+FIL sensorsFile, eventsFile;
+const TCHAR* sensor_file_header = "Seq num, timestamp, pressure, temperature, altitude\r\n";
+const TCHAR* events_file_header = "timestamp, event_description\r\n";
+char buffer[256];
+
 osStatus initSdFile ()
 {
+  MX_FATFS_Init ();
 
   FRESULT res; /* FatFs function common result code */
   uint32_t byteswritten, bytesread; /* File write/read counts */
-  uint8_t wtext[] = "This is STM32 working with FatFs"; /* File write buffer */
-  uint8_t rtext[100];
-  DIR currentDir;
+
+  if (disk_initialize (0) & STA_NOINIT)
+    {
+      //The disk is not initialized correctly.
+      SD_Error ();
+    }
 
   /*##-2- Register the file system object to the FatFs module ##############*/
   if (f_mount (&SDFatFS, (TCHAR const*) SDPath, 0) != FR_OK)
@@ -41,7 +50,7 @@ osStatus initSdFile ()
       TCHAR dir[20];
       for (int i = 0; i < MAX_FOLDER_NUMBER; i++)
         {
-          sprintf (dir, "DATAERT%d", i);
+          sprintf (dir, "DATAERT%02d", i);
           FILINFO info;
           if (f_stat (dir, &info) != FR_OK)
             {
@@ -51,84 +60,45 @@ osStatus initSdFile ()
         }
       TCHAR path[100];
 
-      sprintf (path, "%s" "/" "ERT.txt", dir);
-      if (f_open (&SDFile, path, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+      sprintf (path, "%s" "/" "sensors.txt", dir);
+      if (f_open (&sensorsFile, path, FA_OPEN_APPEND | FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
         {
           /* 'STM32.TXT' file Open for write Error */
           SD_Error ();
         }
-      else
+      sprintf (path, "%s" "/" "events.txt", dir);
+      if (f_open (&eventsFile, path, FA_OPEN_APPEND | FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
         {
-          /*##-5- Write data to the text file ################################*/
-          res = f_write (&SDFile, wtext, sizeof(wtext), (void *) &byteswritten);
-
-          if ((byteswritten == 0) || (res != FR_OK))
-            {
-              /* 'STM32.TXT' file Write or EOF Error */
-              SD_Error ();
-            }
-          else
-            {
-              /*##-6- Close the open text file #################################*/
-              f_close (&SDFile);
-
-              /*##-7- Open the text file object with read access ###############*/
-              if (f_open (&SDFile, "STM32.TXT", FA_READ) != FR_OK)
-                {
-                  /* 'STM32.TXT' file Open for read Error */
-                  SD_Error ();
-                }
-              else
-                {
-                  /*##-8- Read data from the text file ###########################*/
-                  res = f_read (&SDFile, rtext, sizeof(rtext), (UINT*) &bytesread);
-
-                  if ((bytesread == 0) || (res != FR_OK))
-                    {
-                      /* 'STM32.TXT' file Read or EOF Error */
-                      SD_Error ();
-                    }
-                  else
-                    {
-                      /*##-9- Close the open text file #############################*/
-                      f_close (&SDFile);
-
-                      /*##-10- Compare read data with the expected data ############*/
-                      if ((bytesread != byteswritten))
-                        {
-                          /* Read data is different from the expected data */
-                          //SD_Error();
-                        }
-                      else
-                        {
-                          /*
-                           HAL_GPIO_TogglePin (BUZZER_GPIO_Port, BUZZER_Pin);
-                           osDelay (500);
-                           HAL_GPIO_TogglePin (BUZZER_GPIO_Port, BUZZER_Pin);
-                           */
-                        }
-                    }
-                }
-            }
+          /* 'STM32.TXT' file Open for write Error */
+          SD_Error ();
         }
     }
-
 }
 
 void SD_Error ()
 {
-  HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
-  osDelay (500);
-  HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
-  osDelay (portMAX_DELAY);
+  uint8_t repeat = 1;
+  while (repeat--)
+    {
+      HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
+      osDelay (75);
+      HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+      osDelay (75);
+    }
 }
 
 void TK_data (void const * args)
 {
+  osDelay (100);
+
+  initSdFile ();
 
   uint32_t lastImuSeqNumber = 0, lastBaroSeqNumber = 0, telemetrySeqNumber = 0;
+  UINT bytes_written = 0;
+  f_write (&sensorsFile, sensor_file_header, sizeof(sensor_file_header), &bytes_written);
+  f_write (&eventsFile, events_file_header, sizeof(events_file_header), &bytes_written);
 
-  osDelay (800); //Wait for the first values to be written by the IMU and barometer.
+  uint32_t lastSync = 0;
 
   for (;;)
     {
@@ -140,13 +110,24 @@ void TK_data (void const * args)
       lastImuSeqNumber = currentImuSeqNumber;
       lastBaroSeqNumber = currentBaroSeqNumber;
 
-      //TODO: log sensor value here
-      /*Telemetry_Message m = createTelemetryDatagram (imu_data, baro_data, pitot_press, measurement_time,
+      sprintf (buffer, "%d, %d, %f, %f, %f\r\n", telemetrySeqNumber++, measurement_time, baro_data->pressure,
+               baro_data->temperature, baro_data->altitude);
+      f_write (&sensorsFile, buffer, strlen (buffer), &bytes_written);
+
+      /*
+       Telemetry_Message m = createTelemetryDatagram (imu_data, baro_data, pitot_press, measurement_time,
        telemetrySeqNumber++);
        osMessagePut (xBeeQueueHandle, (uint32_t) &m, 50);
        */
 
-      osDelay (15 - (HAL_GetTick () - measurement_time));
+      osDelay (20 - (HAL_GetTick () - measurement_time));
+
+      if (HAL_GetTick () - lastSync > 500)
+        {
+          f_sync(&sensorsFile);
+          f_sync(&eventsFile);
+          lastSync = HAL_GetTick();
+        }
     }
 }
 

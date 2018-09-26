@@ -9,11 +9,12 @@
  * Code based on this library: https://github.com/freetronics/BaroSensor/blob/master/BaroSensor.cpp
  */
 
+#include <Sensors/BMP280/bmp280.h>
 #include <Sensors/i2c_sensors.h>
+#include <Misc/datastructs.h>
 #include "stm32f4xx_hal.h"
 #include "Misc/Common.h"
 
-#include <Sensors/BME280/bme280.h>
 #if(SIMULATION == 1)
 #include <Misc/SimData.h>
 #endif
@@ -24,7 +25,7 @@ I2C_HandleTypeDef* hi2c;
 extern osSemaphoreId i2cSensorsSemHandle;
 extern BARO_data BARO_buffer[];
 
-#define I2C_TIMEOUT 100 //ms
+#define I2C_TIMEOUT 10 //ms
 
 #define MAX_TEMPERATURE 85
 #define MIN_TEMPERATURE -40
@@ -32,9 +33,13 @@ extern BARO_data BARO_buffer[];
 #define MAX_PRESSURE 1200
 #define MIN_PRESSURE 100
 
+struct bmp280_dev bmp;
+uint8_t meas_dur;
+char buf[200];
+
 int8_t stm32_i2c_read (uint8_t dev_id, uint8_t reg_addr, uint8_t *data, uint16_t len)
 {
-  HAL_I2C_Mem_Read_DMA(hi2c, dev_id << 1, reg_addr, I2C_MEMADD_SIZE_8BIT, data, len);
+  HAL_I2C_Mem_Read_DMA (hi2c, dev_id << 1, reg_addr, I2C_MEMADD_SIZE_8BIT, data, len);
   return osSemaphoreWait (i2cSensorsSemHandle, I2C_TIMEOUT);
 }
 
@@ -50,53 +55,42 @@ void stm32_delay_ms (uint32_t period)
 
 extern UART_HandleTypeDef huart2;
 
-void print_sensor_data (struct bme280_data *comp_data)
-{
-#ifdef BME280_FLOAT_ENABLE
-  static char buf[100];
-  sprintf (buf, "temp %0.2f, p %0.2f, hum %0.2f\r\n", (float) comp_data->temperature, (float) comp_data->pressure, comp_data->humidity);
-  HAL_UART_Transmit_DMA(&huart2, buf, strlen(buf));
-#else
-  sprintf(buf, "temp %ld, p %ld, hum %ld\r\n",comp_data->temperature, comp_data->pressure, comp_data->humidity);
-#endif
-}
-
 void initI2cDevices ()
 {
   hi2c = &hi2c1;
 
-  struct bme280_dev dev;
-  int8_t rslt = BME280_OK;
+  int8_t rslt = BMP280_OK;
 
-  dev.dev_id = BME280_I2C_ADDR_PRIM;
-  dev.intf = BME280_I2C_INTF;
-  dev.read = &stm32_i2c_read;
-  dev.write = &stm32_i2c_write;
-  dev.delay_ms = &stm32_delay_ms;
+  bmp.dev_id = BMP280_I2C_ADDR_PRIM;
+  bmp.intf = BMP280_I2C_INTF;
+  bmp.read = &stm32_i2c_read;
+  bmp.write = &stm32_i2c_write;
+  bmp.delay_ms = &stm32_delay_ms;
 
-  rslt = bme280_init (&dev);
+  rslt = bmp280_init (&bmp);
 
-  uint8_t settings_sel;
-  struct bme280_data comp_data;
+  struct bmp280_config conf;
 
-  /* Recommended mode of operation: Indoor navigation */
-  dev.settings.osr_h = BME280_OVERSAMPLING_1X;
-  dev.settings.osr_p = BME280_OVERSAMPLING_16X;
-  dev.settings.osr_t = BME280_OVERSAMPLING_2X;
-  dev.settings.filter = BME280_FILTER_COEFF_16;
+  /* Always read the current settings before writing, especially when
+   * all the configuration is not modified
+   */
+  rslt = bmp280_get_config (&conf, &bmp);
+  /* Check if rslt == BMP280_OK, if not, then handle accordingly */
 
-  settings_sel = BME280_OSR_PRESS_SEL | BME280_OSR_TEMP_SEL | BME280_OSR_HUM_SEL | BME280_FILTER_SEL;
+  /* Overwrite the desired settings */
+  conf.filter = BMP280_FILTER_OFF;
+  conf.os_pres = BMP280_OS_8X;
+  conf.os_temp = BMP280_OS_1X;
+  conf.odr = BMP280_ODR_0_5_MS;
 
-  rslt = bme280_set_sensor_settings (settings_sel, &dev);
+  rslt = bmp280_set_config (&conf, &bmp);
+  /* Check if rslt == BMP280_OK, if not, then handle accordingly */
 
-  while (1)
-    {
-      rslt = bme280_set_sensor_mode (BME280_FORCED_MODE, &dev);
-      /* Wait for the measurement to complete and print data @25Hz */
-      HAL_Delay (40);
-      rslt = bme280_get_sensor_data (BME280_ALL, &comp_data, &dev);
-      print_sensor_data (&comp_data);
-    }
+  /* Always set the power mode after setting the configuration */
+  rslt = bmp280_set_power_mode (BMP280_NORMAL_MODE, &bmp);
+  /* Check if rslt == BMP280_OK, if not, then handle accordingly */
+
+  meas_dur = bmp280_compute_meas_time (&bmp);
 
 }
 
@@ -157,12 +151,50 @@ void TK_fetch_i2c ()
   initI2cDevices ();
 
   uint32_t samplingStart, elapsed;
+  struct bmp280_uncomp_data ucomp_data;
+  int8_t rslt = BMP280_OK;
 
   for (;;)
     {
 
       samplingStart = HAL_GetTick ();
 
+      rslt = bmp280_get_uncomp_data (&ucomp_data, &bmp);
+      if (rslt != BMP280_OK)
+        {
+          goto IMU;
+        }
+
+
+      int32_t temp32 = bmp280_comp_temp_32bit(ucomp_data.uncomp_temp, &bmp);
+      uint32_t pres32 = bmp280_comp_pres_32bit(ucomp_data.uncomp_press, &bmp);
+      uint32_t pres64 = bmp280_comp_pres_64bit(ucomp_data.uncomp_press, &bmp);
+      float temp = (float) bmp280_comp_temp_double(ucomp_data.uncomp_temp, &bmp);
+      double pres = bmp280_comp_pres_double(ucomp_data.uncomp_press, &bmp);
+
+
+      //float temp = (float) bmp280_comp_temp_double (ucomp_data.uncomp_temp, &bmp);
+      //float press = (float) bmp280_comp_pres_double (ucomp_data.uncomp_press, &bmp) / 100.0;
+
+      sprintf(buf, "UT: %d, UP: %d, T32: %d, P32: %d, P64: %d, P64N: %d, T: %f, P: %f\r\n", \
+        ucomp_data.uncomp_temp, ucomp_data.uncomp_press, temp32, \
+        pres32, pres64, pres64 / 256, temp, pres);
+      HAL_UART_Transmit_DMA (&huart2, buf, strlen (buf));
+
+
+      BARO_data* new_data = &BARO_buffer[currentBaroSeqNumber + 1 % CIRC_BUFFER_SIZE];
+      new_data->pressure = pres;
+      new_data->temperature = temp;
+      new_data->altitude = altitudeFromPressure(pres);
+
+#if DEBUG
+      sprintf (buf, "T: %f, P: %f\r\n", temp, press);
+      HAL_UART_Transmit_DMA (&huart2, buf, strlen (buf));
+#endif
+
+      IMU:
+
+      continue;
     }
 
 #endif
@@ -171,17 +203,8 @@ void TK_fetch_i2c ()
 inline float altitudeFromPressure (float pressure_hPa)
 {
   float altitude = 44330 * (1.0 - pow (pressure_hPa / ADJUSTED_SEA_LEVEL_PRESSURE, 0.1903));
-
-  if (altitude < 100 || altitude > 5000)
-    {
-      return 0;
-    }
-  else
-    {
-      return altitude;
-    }
+  return altitude;
 }
-
 
 /*
  void HAL_I2C_MasterTxCpltCallback (I2C_HandleTypeDef *hi2c)
@@ -191,29 +214,29 @@ inline float altitudeFromPressure (float pressure_hPa)
  */
 
 /*void HAL_I2C_MasterRxCpltCallback (I2C_HandleTypeDef *hi2c)
+ {
+ osSemaphoreRelease (i2cSensorsSemHandle);
+ }
+ */
+
+void HAL_I2C_MemTxCpltCallback (I2C_HandleTypeDef *hi2c)
 {
   osSemaphoreRelease (i2cSensorsSemHandle);
 }
-*/
 
-void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c){
-  osSemaphoreRelease (i2cSensorsSemHandle);
-}
-
-
-void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
+void HAL_I2C_MemRxCpltCallback (I2C_HandleTypeDef *hi2c)
 {
   osSemaphoreRelease (i2cSensorsSemHandle);
 }
 
 /*
-void HAL_I2C_ErrorCallback (I2C_HandleTypeDef *hi2c)
-{
-  osSemaphoreRelease (i2cSensorsSemHandle);
-}
+ void HAL_I2C_ErrorCallback (I2C_HandleTypeDef *hi2c)
+ {
+ osSemaphoreRelease (i2cSensorsSemHandle);
+ }
 
-void HAL_I2C_AbortCpltCallback (I2C_HandleTypeDef *hi2c)
-{
-  //osSemaphoreRelease (i2cSensorsSemHandle);
-}
-*/
+ void HAL_I2C_AbortCpltCallback (I2C_HandleTypeDef *hi2c)
+ {
+ //osSemaphoreRelease (i2cSensorsSemHandle);
+ }
+ */
