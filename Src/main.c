@@ -175,7 +175,7 @@ int main(void)
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityLow, 0, 1024);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityIdle, 0, 1024);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* definition and creation of fetch_i2c_senso */
@@ -463,7 +463,7 @@ void initPeripherals ()
 /* USER CODE END 4 */
 
 /* StartDefaultTask function */
-void StartDefaultTask(void const * argument)
+__weak void StartDefaultTask(void const * argument)
 {
   /* init code for FATFS */
   MX_FATFS_Init();

@@ -11,8 +11,6 @@
 
 #include "Airbrakes/controller_functions.h"
 
-extern UART_HandleTypeDef* airbrake_huart;
-
 extern volatile uint32_t flight_status;
 
 osStatus motorDetected = osErrorOS;
@@ -26,32 +24,6 @@ void TK_ab_controller (void const * argument)
 
 #if (SIMULATION == 0)
 
-  for (;;)
-    {
-      if (LIFTOFF_TIME != 0) {
-          aerobrakes_control_init();
-          goto control;
-          break;
-      }
-
-      HAL_StatusTypeDef ret = HAL_UART_Receive (airbrake_huart, faulhaber_welcome, 9, 5000);
-      if (ret == HAL_TIMEOUT)
-        {
-          continue;
-        }
-      int comparison = strcmp (faulhaber_welcome, "FAULHABER");
-      if (comparison == 0)
-        {
-          motorDetected = osOK;
-          flight_status = 5;
-          break;
-        }
-      else
-        {
-          osDelay (100);
-        }
-
-    }
   osDelay (2000);
 
   aerobrakes_control_init ();
@@ -64,6 +36,7 @@ void TK_ab_controller (void const * argument)
 
   osDelay (1000);
 
+
   /*
    command_aerobrake_controller (1500.0, 100.0); // Should be full open
    command_aerobrake_controller (200.0, 100.0); // Should be full close
@@ -75,11 +48,10 @@ void TK_ab_controller (void const * argument)
 
   while (LIFTOFF_TIME == 0)
     {
-      osDelay (10);
+      osDelay (1);
     }
 
-control:
-  for (;;)
+  control: for (;;)
     {
 
       if ((HAL_GetTick () - LIFTOFF_TIME) > 17000)
@@ -106,15 +78,8 @@ control:
       lastAirbrakesUpdate = HAL_GetTick ();
     }
 
-  airbrakes_angle = -1;
-
   for (;;)
     {
-      osDelay(10000);
+      osDelay (portMAX_DELAY);
     }
-}
-
-void airbrake_rxCpltCallback ()
-{
-  motorDetected = osErrorResource;
 }

@@ -33,10 +33,23 @@ osStatus initSdFile ()
   FRESULT res; /* FatFs function common result code */
   uint32_t byteswritten, bytesread; /* File write/read counts */
 
-  if (disk_initialize (0) & STA_NOINIT)
+  for (int i = 3; i >= 0; i--)
+    {
+      if (disk_initialize (0) == 0)
+        {
+          break; //Initialization is valid
+        }
+      else
+        {
+          osDelay (300);
+        }
+    }
+
+  if (disk_initialize (0) != 0)
     {
       //The disk is not initialized correctly.
       SD_Error ();
+      return osErrorResource;
     }
 
   /*##-2- Register the file system object to the FatFs module ##############*/
@@ -44,6 +57,7 @@ osStatus initSdFile ()
     {
       /* FatFs Initialization Error */
       SD_Error ();
+      return osErrorResource;
     }
   else
     {
@@ -65,13 +79,17 @@ osStatus initSdFile ()
         {
           /* 'STM32.TXT' file Open for write Error */
           SD_Error ();
+          return osErrorResource;
         }
       sprintf (path, "%s" "/" "events.txt", dir);
       if (f_open (&eventsFile, path, FA_OPEN_APPEND | FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
         {
           /* 'STM32.TXT' file Open for write Error */
           SD_Error ();
+          return osErrorResource;
         }
+
+      return osOK;
     }
 }
 
@@ -91,7 +109,17 @@ void TK_data (void const * args)
 {
   osDelay (100);
 
-  initSdFile ();
+  if (initSdFile () != osOK)
+    {
+      HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
+      osDelay (2000);
+      HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+
+      for (;;)
+        {
+          osDelay (portMAX_DELAY);
+        }
+    }
 
   uint32_t lastImuSeqNumber = 0, lastBaroSeqNumber = 0, telemetrySeqNumber = 0;
   UINT bytes_written = 0;
@@ -124,9 +152,9 @@ void TK_data (void const * args)
 
       if (HAL_GetTick () - lastSync > 500)
         {
-          f_sync(&sensorsFile);
-          f_sync(&eventsFile);
-          lastSync = HAL_GetTick();
+          f_sync (&sensorsFile);
+          f_sync (&eventsFile);
+          lastSync = HAL_GetTick ();
         }
     }
 }

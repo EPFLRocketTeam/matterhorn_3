@@ -8,6 +8,7 @@
 #include <stm32f4xx_hal.h>
 #include <string.h>
 #include <Misc/Common.h>
+#include "cmsis_os.h"
 
 #ifdef SHURIKEN
 
@@ -24,7 +25,15 @@ extern volatile float32_t airbrakes_angle;
 
 //float correction_margin_error_integration = 0;
 //float correction_margin_last_error = 0;
-char command_string[10];
+char command_string[10] = {0};
+
+void transmit_command(char* command, int size)
+{
+  static char command_buffer[64];
+  strcpy(command_buffer, command);
+  HAL_UART_Transmit_DMA(airbrake_huart, (uint8_t*)command_buffer, size);
+  osDelay(30);
+}
 
 int tab_deg_to_inc_converter (float degrees_angle)
 {
@@ -34,76 +43,42 @@ int tab_deg_to_inc_converter (float degrees_angle)
 
 char* do_string_command (char first, char second, int number)
 {
-  for (int i = 0; i < sizeof(command_string); i++)
-    {
-      command_string[i] = 0;
-    }
-  command_string[0] = first;
-  command_string[1] = second;
-  char* commandIncStart = (char*) (&command_string[2]);
-  sprintf (commandIncStart, "%d", number);
-  size_t length = strlen (commandIncStart);
-  commandIncStart[length] = '\r';
-
-  return command_string;
+  sprintf(command_string, "%c%c%d\r", first, second, number);
+  return command_string; //is it really needed ?
 }
 
 void motor_goto_position_inc (int position_inc)
 {
+  char command[12];
   do_string_command ('L', 'A', position_inc);
-  HAL_UART_Transmit (airbrake_huart, command_string, strlen (command_string), 30);
-  uint8_t* command = "M\r";
-  HAL_UART_Transmit (airbrake_huart, command, 2, 30);
+  sprintf(command, "%s%s", command_string, "M\r");
+  transmit_command(command, strlen(command));
   // ADD DELAY HERE; THE PERIOD DEPENDS ON KALMAN FILTER FREQUENCY....
   return;
 }
 
 void controller_test (void)
 {
-  uint8_t* command = "HO\r";
-  HAL_UART_Transmit (airbrake_huart, command, 3, 30);
-  HAL_Delay (100);
-  command = "EN\r";
-  HAL_UART_Transmit (airbrake_huart, command, 3, 30);
-  HAL_Delay (100);
-  motor_goto_position_inc (10000);
-  command = "M\r";
-  HAL_UART_Transmit (airbrake_huart, command, 2, 30);
+  transmit_command("HO\r", 3);
+  transmit_command("EN\r", 3);
+  motor_goto_position_inc(10000);
+  transmit_command("M\r", 2);
   return; // SMALL FUNCTION TO TEST IF THE TRANSMISSION IS WORKING... THE MOTOR SHOULD ROTATE
 }
 
 void aerobrakes_control_init (void)
 {
   // TO CALL AT POWERING ON
-//defining home
-  uint8_t* command = "HO\r";
-  HAL_UART_Transmit (airbrake_huart, command, 3, 30);
-//position limits
-  command = "LL1\r";
-  HAL_UART_Transmit (airbrake_huart, command, 4, 30);
-  int max_inc = tab_deg_to_inc_converter (MAX_OPENING_DEG); //" degrees for safety.
-  do_string_command ('L', 'L', max_inc);
-  HAL_UART_Transmit (airbrake_huart, command_string, 9, 30);
-  command = "APL1\r";
-  HAL_UART_Transmit (airbrake_huart, command, 5, 30);
-// controller properties
-//	command = "SP10000\r";							MAXIMUM SPEED in inc/min
-//	HAL_UART_Transmit(&huart1, command, 8, 30);
-  command = "POR1\r";											//    READAPT PID PARAMS FOR FLAPS
-  HAL_UART_Transmit (airbrake_huart, command, 5, 30);
-  command = "I1\r";
-  HAL_UART_Transmit (airbrake_huart, command, 3, 30);
-  command = "PP255\r";
-  HAL_UART_Transmit (airbrake_huart, command, 6, 30);
-  command = "PD5\r";
-  HAL_UART_Transmit (airbrake_huart, command, 4, 30);
-  command = "LPC2500\r"; // peak current max, to be redefined
-  HAL_UART_Transmit (airbrake_huart, command, 8, 30);
-  command = "LCC2000\r"; // continuous current max_to be redefined
-  HAL_UART_Transmit (airbrake_huart, command, 8, 30);
-  //Enable
-  command = "EN\r";
-  HAL_UART_Transmit (airbrake_huart, command, 3, 30);
+  char command[40];
+  do_string_command ('L', 'L', tab_deg_to_inc_converter (MAX_OPENING_DEG));
+  sprintf(command, "%s%s%s%s", "HO\r", "LL1\r", command_string, "APL1\r");
+  transmit_command(command, strlen(command));
+  // controller properties
+//  command = "SP10000\r";              MAXIMUM SPEED in inc/min
+//  HAL_UART_Transmit_DMA(&huart1, command, 8);
+  sprintf(command, "%s%s%s%s%s%s%s", "POR1\r", "I1\r", "PP255\r", "PD5\r",
+      "LPC3000\r", "LCC3000\r", "EN\r");
+  transmit_command(command, 37);
   return;
 }
 
@@ -117,65 +92,64 @@ void full_close (void)
 void aerobrake_helloworld (void)
 {
   float angle_helloworld = 5.0;
-  int angle_helloworld_inc = tab_deg_to_inc_converter (angle_helloworld);
-  motor_goto_position_inc (angle_helloworld_inc);
-  HAL_Delay (500);
-  full_close ();
+  int angle_helloworld_inc = tab_deg_to_inc_converter(angle_helloworld);
+  motor_goto_position_inc(angle_helloworld_inc);
+  osDelay(500);
+  full_close();
   return;
-
 }
 
 float angle_tab (float altitude, float speed)
 {
   int index_altitude = 0;
   if (altitude < look_up_tab[0][0])
+  {
+    return 0.0;
+  }
+  else if (altitude > look_up_tab[TABLE_LENGTH - 1][0])
+  {
+    return (float) MAX_OPENING_DEG;
+    }
+  else
+  {
+    int j;
+    float mean_speed_vector[TABLE_DIFF_SPEEDS_SAME_ALTITUDE];
+    float mean_angle_vector[TABLE_DIFF_SPEEDS_SAME_ALTITUDE];
+    while (look_up_tab[index_altitude][0] < altitude)
+    {
+      index_altitude += TABLE_DIFF_SPEEDS_SAME_ALTITUDE;
+    }
+    float phi = (altitude - look_up_tab[index_altitude - TABLE_DIFF_SPEEDS_SAME_ALTITUDE][0])
+          / (look_up_tab[index_altitude][0] - look_up_tab[index_altitude - TABLE_DIFF_SPEEDS_SAME_ALTITUDE][0]);
+    for (j = 0; j < TABLE_DIFF_SPEEDS_SAME_ALTITUDE; j++)
+    {
+      mean_speed_vector[j] = phi * look_up_tab[index_altitude - TABLE_DIFF_SPEEDS_SAME_ALTITUDE + j][1]
+              + (1 - phi) * look_up_tab[index_altitude + j][1];
+      mean_angle_vector[j] = phi * look_up_tab[index_altitude - TABLE_DIFF_SPEEDS_SAME_ALTITUDE + j][2]
+              + (1 - phi) * look_up_tab[index_altitude + j][2];
+    }
+
+    int index_speed = 0;
+    if (speed < mean_speed_vector[0])
     {
       return 0.0;
     }
-  else if (altitude > look_up_tab[TABLE_LENGTH - 1][0])
+    else if (speed > mean_speed_vector[TABLE_DIFF_SPEEDS_SAME_ALTITUDE - 1])
     {
       return (float) MAX_OPENING_DEG;
     }
-  else
+    else
     {
-      int j;
-      float mean_speed_vector[TABLE_DIFF_SPEEDS_SAME_ALTITUDE];
-      float mean_angle_vector[TABLE_DIFF_SPEEDS_SAME_ALTITUDE];
-      while (look_up_tab[index_altitude][0] < altitude)
-        {
-          index_altitude += TABLE_DIFF_SPEEDS_SAME_ALTITUDE;
-        }
-      float phi = (altitude - look_up_tab[index_altitude - TABLE_DIFF_SPEEDS_SAME_ALTITUDE][0])
-          / (look_up_tab[index_altitude][0] - look_up_tab[index_altitude - TABLE_DIFF_SPEEDS_SAME_ALTITUDE][0]);
-      for (j = 0; j < TABLE_DIFF_SPEEDS_SAME_ALTITUDE; j++)
-        {
-          mean_speed_vector[j] = phi * look_up_tab[index_altitude - TABLE_DIFF_SPEEDS_SAME_ALTITUDE + j][1]
-              + (1 - phi) * look_up_tab[index_altitude + j][1];
-          mean_angle_vector[j] = phi * look_up_tab[index_altitude - TABLE_DIFF_SPEEDS_SAME_ALTITUDE + j][2]
-              + (1 - phi) * look_up_tab[index_altitude + j][2];
-        }
-
-      int index_speed = 0;
-      if (speed < mean_speed_vector[0])
-        {
-          return 0.0;
-        }
-      else if (speed > mean_speed_vector[TABLE_DIFF_SPEEDS_SAME_ALTITUDE - 1])
-        {
-          return (float) MAX_OPENING_DEG;
-        }
-      else
-        {
-          while (mean_speed_vector[index_speed] < speed)
-            {
-              index_speed += 1;
-            }
-          float theta = (speed - mean_speed_vector[index_speed - 1])
+      while (mean_speed_vector[index_speed] < speed)
+      {
+        index_speed += 1;
+      }
+      float theta = (speed - mean_speed_vector[index_speed - 1])
               / (mean_speed_vector[index_speed] - mean_speed_vector[index_speed - 1]);
-          float mean_angle = theta * mean_angle_vector[index_speed - 1] + (1 - theta) * mean_angle_vector[index_speed];
-          return mean_angle;
-        }
+      float mean_angle = theta * mean_angle_vector[index_speed - 1] + (1 - theta) * mean_angle_vector[index_speed];
+      return mean_angle;
     }
+  }
 }
 
 void command_aerobrake_controller (float altitude, float speed)
@@ -191,11 +165,11 @@ void command_aerobrake_controller (float altitude, float speed)
   int command_inc;
 
   // PAS DE CONTROLE PID si on est en dehors de la bande de controle;
-  //pas de accumulation de l'erreur non-plus, pour éviter le wipe-out.
-  //On passe en mode controle PID que lorsque l'on est à l'intérieur de la bande de controle
+  //pas de accumulation de l'erreur non-plus, pour Ã©viter le wipe-out.
+  //On passe en mode controle PID que lorsque l'on est Ã  l'intÃ©rieur de la bande de controle
   if (opt_act_position_inc <= full_close_inc || opt_act_position_inc >= full_open_inc)
     {
-      command_inc = opt_act_position_inc;
+    command_inc = opt_act_position_inc;
       // DO WE CANCEL the integral of the error when we're out of the band of control or do we leave it like it is? Wipe out?
       //Let's leave it like it this for now
     }
@@ -203,11 +177,11 @@ void command_aerobrake_controller (float altitude, float speed)
     {
 //        correction_margin_error_integration += inc_error;
 //        command_inc = opt_act_position_inc - Kp_correction_margin*inc_error - Td_correction_margin*(inc_error-correction_margin_last_error) - Ki_correction_margin*correction_margin_error_integration;
-      command_inc = opt_act_position_inc - Kp_correction_margin * inc_error;
-      if (command_inc <= full_close_inc)
-        command_inc = full_close_inc;
-      else if (command_inc >= full_open_inc)
-        command_inc = full_open_inc;
+    command_inc = opt_act_position_inc - Kp_correction_margin * inc_error;
+    if (command_inc <= full_close_inc)
+      command_inc = full_close_inc;
+    else if (command_inc >= full_open_inc)
+      command_inc = full_open_inc;
     }
 //    correction_margin_last_error = inc_error;
 
@@ -226,17 +200,17 @@ void command_aerobrake_controller (float altitude, float speed)
  float test6 = angle_tab(446, 110); // should be somewhere in between
 
  do_string_command('L', 'A', (int)test1);
- HAL_UART_Transmit(&huart1, command_string, strlen(command_string), 30);
+ HAL_UART_Transmit_DMA(&huart1, command_string, strlen(command_string));
  do_string_command('L', 'A', (int)test2);
- HAL_UART_Transmit(&huart1, command_string, strlen(command_string), 30);
+ HAL_UART_Transmit_DMA(&huart1, command_string, strlen(command_string));
  do_string_command('L', 'A', (int)test3);
- HAL_UART_Transmit(&huart1, command_string, strlen(command_string), 30);
+ HAL_UART_Transmit_DMA(&huart1, command_string, strlen(command_string));
  do_string_command('L', 'A', (int)test4);
- HAL_UART_Transmit(&huart1, command_string, strlen(command_string), 30);
+ HAL_UART_Transmit_DMA(&huart1, command_string, strlen(command_string));
  do_string_command('L', 'A', (int)test5);
- HAL_UART_Transmit(&huart1, command_string, strlen(command_string), 30);
+ HAL_UART_Transmit_DMA(&huart1, command_string, strlen(command_string));
  do_string_command('L', 'A', (int)test6);
- HAL_UART_Transmit(&huart1, command_string, strlen(command_string), 30);
+ HAL_UART_Transmit_DMA(&huart1, command_string, strlen(command_string));
  return;
  }
  */
