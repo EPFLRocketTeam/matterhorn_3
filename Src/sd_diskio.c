@@ -356,7 +356,7 @@ DRESULT SD_ioctl(BYTE lun, BYTE cmd, void *buff)
 
 /* USER CODE BEGIN callbackSection */ 
 
-void HAL_SD_TxCpltCallback(SD_HandleTypeDef *hsd)
+__weak void HAL_SD_TxCpltCallback(SD_HandleTypeDef *hsd)
 {
   osMessagePut(SDQueueID, WRITE_CPLT_MSG, osWaitForever);
 }
@@ -366,7 +366,7 @@ void HAL_SD_TxCpltCallback(SD_HandleTypeDef *hsd)
  * @param hsd Pointer SD handle
  * @retval None
  */
-void HAL_SD_RxCpltCallback(SD_HandleTypeDef *hsd)
+__weak void HAL_SD_RxCpltCallback(SD_HandleTypeDef *hsd)
 {
   osMessagePut(SDQueueID, READ_CPLT_MSG, osWaitForever);
 }

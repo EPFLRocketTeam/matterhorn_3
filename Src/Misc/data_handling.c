@@ -64,7 +64,7 @@ osStatus initSdFile ()
       TCHAR dir[20];
       for (int i = 0; i < MAX_FOLDER_NUMBER; i++)
         {
-          sprintf (dir, "DATAERT%02d", i);
+          sprintf (dir, "DATA%02d", i);
           FILINFO info;
           if (f_stat (dir, &info) != FR_OK)
             {
@@ -150,7 +150,7 @@ void TK_data (void const * args)
 
       osDelay (20 - (HAL_GetTick () - measurement_time));
 
-      if (HAL_GetTick () - lastSync > 500)
+      if (HAL_GetTick () - lastSync > 2500)
         {
           f_sync (&sensorsFile);
           f_sync (&eventsFile);
