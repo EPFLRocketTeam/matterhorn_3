@@ -79,6 +79,8 @@ osThreadId defaultTaskHandle;
 osThreadId fetch_i2c_sensoHandle;
 osThreadId data_mgmtHandle;
 osThreadId airbrakes_ctrlHandle;
+osThreadId state_machineHandle;
+osThreadId physical_ifaceHandle;
 osSemaphoreId i2cSensorsSemHandle;
 
 /* USER CODE BEGIN PV */
@@ -106,6 +108,8 @@ void StartDefaultTask(void const * argument);
 extern void TK_fetch_i2c(void const * argument);
 extern void TK_data(void const * argument);
 extern void TK_ab_controller(void const * argument);
+extern void TK_state_machine(void const * argument);
+extern void TK_physical_iface(void const * argument);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -179,7 +183,7 @@ int main(void)
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* definition and creation of fetch_i2c_senso */
-  osThreadDef(fetch_i2c_senso, TK_fetch_i2c, osPriorityNormal, 0, 1024);
+  osThreadDef(fetch_i2c_senso, TK_fetch_i2c, osPriorityBelowNormal, 0, 1024);
   fetch_i2c_sensoHandle = osThreadCreate(osThread(fetch_i2c_senso), NULL);
 
   /* definition and creation of data_mgmt */
@@ -187,8 +191,16 @@ int main(void)
   data_mgmtHandle = osThreadCreate(osThread(data_mgmt), NULL);
 
   /* definition and creation of airbrakes_ctrl */
-  osThreadDef(airbrakes_ctrl, TK_ab_controller, osPriorityNormal, 0, 1024);
+  osThreadDef(airbrakes_ctrl, TK_ab_controller, osPriorityAboveNormal, 0, 1024);
   airbrakes_ctrlHandle = osThreadCreate(osThread(airbrakes_ctrl), NULL);
+
+  /* definition and creation of state_machine */
+  osThreadDef(state_machine, TK_state_machine, osPriorityHigh, 0, 1024);
+  state_machineHandle = osThreadCreate(osThread(state_machine), NULL);
+
+  /* definition and creation of physical_iface */
+  osThreadDef(physical_iface, TK_physical_iface, osPriorityHigh, 0, 256);
+  physical_ifaceHandle = osThreadCreate(osThread(physical_iface), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */

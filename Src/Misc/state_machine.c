@@ -12,8 +12,6 @@
 #include <Misc/rocket_constants.h>
 #include <Misc/physical_iface.h>
 
-// Apogee measurements delay
-
 void TK_state_machine (void const * argument)
 {
 
@@ -125,14 +123,15 @@ void TK_state_machine (void const * argument)
               {
 
                 // Compute lift-off triggers for acceleration
-                uint8_t liftoffAccelTrig = (abs_fl32 (imu_data->acceleration.x) > ROCKET_CST_LIFTOFF_TRIG_ACCEL);
+                uint8_t liftoffAccelTrig = (abs_fl32 (imu_data->acceleration.y) > 2);
 
                 if (LIFTOFF_TIME != 0)
                   {
                     //already detected the acceleration trigger. now we need the trigger for at least 1000ms before trigerring the liftoff.
-                    if (liftoffAccelTrig && LIFTOFF_TIME - HAL_GetTick () > 1000)
+                    if (liftoffAccelTrig && LIFTOFF_TIME - HAL_GetTick () > 200)
                       {
                         currentState = STATE_LIFTOFF; // Switch to lift-off state
+                        longBip();
                         break;
                       }
                     else if (!liftoffAccelTrig) //false positive.

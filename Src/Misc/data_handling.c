@@ -11,7 +11,7 @@
 #include <Misc/Common.h>
 #include <Misc/data_handling.h>
 
-#define MAX_FOLDER_NUMBER 100
+#define MAX_FOLDER_NUMBER 1000
 
 extern IMU_data IMU_buffer[];
 extern BARO_data BARO_buffer[];
@@ -22,9 +22,14 @@ extern int startSimulation;
 extern volatile float32_t high_range_pressure;
 
 FIL sensorsFile, eventsFile;
-const TCHAR* sensor_file_header = "Seq num, timestamp, pressure, temperature, altitude\r\n";
-const TCHAR* events_file_header = "timestamp, event_description\r\n";
-char buffer[256];
+const TCHAR sensor_file_header[] =
+    "Seq num, timestamp, pressure, temperature, altitude, acc (mg) xyz, gyro(rps) xyz, mag(uT) xyz\r\n";
+const TCHAR events_file_header[] = "timestamp, event_description\r\n";
+char buffer[2048];
+
+extern struct bno055_accel_float_t f_accel_xyz;
+extern struct bno055_gyro_float_t f_gyro_xyz;
+extern struct bno055_mag_float_t f_mag_xyz;
 
 osStatus initSdFile ()
 {
@@ -32,6 +37,8 @@ osStatus initSdFile ()
 
   FRESULT res; /* FatFs function common result code */
   uint32_t byteswritten, bytesread; /* File write/read counts */
+
+  //osDelay(portMAX_DELAY);
 
   for (int i = 3; i >= 0; i--)
     {
@@ -107,7 +114,7 @@ void SD_Error ()
 
 void TK_data (void const * args)
 {
-  osDelay (100);
+  osDelay (700);
 
   if (initSdFile () != osOK)
     {
@@ -126,7 +133,11 @@ void TK_data (void const * args)
   f_write (&sensorsFile, sensor_file_header, sizeof(sensor_file_header), &bytes_written);
   f_write (&eventsFile, events_file_header, sizeof(events_file_header), &bytes_written);
 
-  uint32_t lastSync = 0;
+  uint32_t lastSync = HAL_GetTick ();
+
+  f_sync (&sensorsFile);
+  f_sync (&eventsFile);
+  lastSync = HAL_GetTick ();
 
   for (;;)
     {
@@ -138,24 +149,29 @@ void TK_data (void const * args)
       lastImuSeqNumber = currentImuSeqNumber;
       lastBaroSeqNumber = currentBaroSeqNumber;
 
-      sprintf (buffer, "%d, %d, %f, %f, %f\r\n", telemetrySeqNumber++, measurement_time, baro_data->pressure,
-               baro_data->temperature, baro_data->altitude);
+      sprintf (buffer,
+               "%lu, %lu, "
+               "%f, %f, %f, "
+               "%f, %f, %f, "
+               "%f, %f, %f, "
+               "%f, %f, %f\r\n",
+               telemetrySeqNumber++, measurement_time,
+               baro_data->pressure, baro_data->temperature, baro_data->altitude,
+               imu_data->acceleration.x, imu_data->acceleration.y, imu_data->acceleration.z,
+               imu_data->gyro_rps.x, imu_data->gyro_rps.y, imu_data->gyro_rps.z,
+               imu_data->mag_uT.x, imu_data->mag_uT.y, imu_data->mag_uT.z
+      );
+
       f_write (&sensorsFile, buffer, strlen (buffer), &bytes_written);
 
-      /*
-       Telemetry_Message m = createTelemetryDatagram (imu_data, baro_data, pitot_press, measurement_time,
-       telemetrySeqNumber++);
-       osMessagePut (xBeeQueueHandle, (uint32_t) &m, 50);
-       */
-
-      osDelay (20 - (HAL_GetTick () - measurement_time));
-
-      if (HAL_GetTick () - lastSync > 2500)
+      if (HAL_GetTick () - lastSync > 500)
         {
           f_sync (&sensorsFile);
           f_sync (&eventsFile);
           lastSync = HAL_GetTick ();
         }
+
+      osDelay (20 - (HAL_GetTick () - measurement_time));
     }
 }
 
