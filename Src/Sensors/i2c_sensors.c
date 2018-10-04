@@ -204,14 +204,15 @@ void TK_fetch_i2c ()
 
       //float temp = (float) bmp280_comp_temp_double (ucomp_data.uncomp_temp, &bmp);
       //float press = (float) bmp280_comp_pres_double (ucomp_data.uncomp_press, &bmp) / 100.0;
-
-      int written = sprintf (buf, "UT: %d, UP: %d, T32: %d, P32: %d, P64: %d, P64N: %d, T: %f, P: %f\r\n",
-                             ucomp_data.uncomp_temp, ucomp_data.uncomp_press, temp32, pres32, pres64, pres64 / 256,
-                             temp, pres);
-      if (written > 180)
-        {
-          HAL_UART_Transmit_DMA (&huart2, buf, strlen (buf));
-        }
+      /*
+       int written = sprintf (buf, "UT: %d, UP: %d, T32: %d, P32: %d, P64: %d, P64N: %d, T: %f, P: %f\r\n",
+       ucomp_data.uncomp_temp, ucomp_data.uncomp_press, temp32, pres32, pres64, pres64 / 256,
+       temp, pres);
+       if (written > 180)
+       {
+       HAL_UART_Transmit_DMA (&huart2, buf, strlen (buf));
+       }
+       */
 
       BARO_data* new_data = &BARO_buffer[(currentBaroSeqNumber + 1) % CIRC_BUFFER_SIZE];
       new_data->pressure = pres;
@@ -244,7 +245,7 @@ void TK_fetch_i2c ()
       currentBaroSeqNumber++;
       currentImuSeqNumber++;
 
-      continue;
+      osDelay(10);
     }
 
 #endif

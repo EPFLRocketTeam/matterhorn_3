@@ -141,8 +141,8 @@ void TK_data (void const * args)
 
   uint32_t lastImuSeqNumber = 0, lastBaroSeqNumber = 0, telemetrySeqNumber = 0;
   UINT bytes_written = 0;
-  f_write (&sensorsFile, sensor_file_header, strlen(sensor_file_header), &bytes_written);
-  f_write (&eventsFile, events_file_header, strlen(events_file_header), &bytes_written);
+  f_write (&sensorsFile, sensor_file_header, strlen (sensor_file_header), &bytes_written);
+  f_write (&eventsFile, events_file_header, strlen (events_file_header), &bytes_written);
 
   uint32_t lastSync = HAL_GetTick ();
 
@@ -150,16 +150,26 @@ void TK_data (void const * args)
   f_sync (&eventsFile);
   lastSync = HAL_GetTick ();
 
+  osDelay (1500);
+
   for (;;)
     {
-      if (currentState == STATE_TOUCHDOWN && !file_closed) {
-          f_close(&sensorsFile);
-          f_close(&eventsFile);
+
+      /*TODO: Improvement: a task should be responsible for creating each line entry using the sprintf function.
+       * It should then send these new lines to a queue. Another task (e.g. sd_task) then should emtpy the queue and sync the files.
+       * This way you can have a constant sampling rate, which is not guaranteed here if the SD card is not fast enough.
+       */
+
+      if (currentState == STATE_TOUCHDOWN && !file_closed)
+        {
+          f_close (&sensorsFile);
+          f_close (&eventsFile);
           file_closed = 1;
-          for (;;) {
-              osDelay(portMAX_DELAY);
-          }
-      }
+          for (;;)
+            {
+              osDelay (portMAX_DELAY);
+            }
+        }
       uint32_t measurement_time = HAL_GetTick ();
 
       IMU_data* imu_data = &IMU_buffer[currentImuSeqNumber % CIRC_BUFFER_SIZE];
@@ -179,14 +189,18 @@ void TK_data (void const * args)
 
       f_write (&sensorsFile, buffer, strlen (buffer), &bytes_written);
 
-      if (HAL_GetTick () - lastSync > 500)
+      if (HAL_GetTick () - lastSync > 5000)
         {
           f_sync (&sensorsFile);
-          f_sync (&eventsFile);
+          //f_sync (&eventsFile);
           lastSync = HAL_GetTick ();
         }
 
-      osDelay (20 - (HAL_GetTick () - measurement_time));
+      uint32_t elapsed = HAL_GetTick () - measurement_time;
+      if (elapsed < 20)
+        {
+          osDelay (20 - elapsed);
+        }
     }
 }
 

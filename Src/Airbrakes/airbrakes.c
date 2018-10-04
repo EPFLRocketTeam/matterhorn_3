@@ -71,9 +71,11 @@ void TK_ab_controller (void const * argument)
               if (elapsed_time < AB_T2_CLOSE)
                 {
                   full_open ();
+                  shortBip();
                 }
               else
                 {
+                  shortBip();
                   full_close ();
                   break;
                 }

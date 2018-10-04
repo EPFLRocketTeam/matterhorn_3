@@ -313,7 +313,7 @@ void TK_state_machine (void const * argument)
 
             for(;;) {
                 longBip();
-                osDelay(1000);
+                osDelay(2000);
             }
 
             break;
