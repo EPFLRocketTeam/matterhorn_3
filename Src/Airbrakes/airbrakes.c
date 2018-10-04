@@ -10,6 +10,7 @@
 #include <cmsis_os.h>
 
 #include "Airbrakes/controller_functions.h"
+#include <Misc/rocket_constants.h>
 
 extern volatile uint32_t flight_status;
 
@@ -36,7 +37,6 @@ void TK_ab_controller (void const * argument)
 
   osDelay (1000);
 
-
   /*
    command_aerobrake_controller (1500.0, 100.0); // Should be full open
    command_aerobrake_controller (200.0, 100.0); // Should be full close
@@ -51,7 +51,7 @@ void TK_ab_controller (void const * argument)
       osDelay (1);
     }
 
-  control: for (;;)
+  for (;;)
     {
 
       if ((HAL_GetTick () - LIFTOFF_TIME) > 17000)
@@ -62,7 +62,23 @@ void TK_ab_controller (void const * argument)
 
       if (currentState == STATE_COAST)
         {
-          command_aerobrake_controller (altitude_estimate, air_speed_state_estimate); // Should be full close
+          //command_aerobrake_controller (altitude_estimate, air_speed_state_estimate); // Should be full close
+
+          uint32_t elapsed_time = HAL_GetTick () - LIFTOFF_TIME;
+
+          if (elapsed_time > AB_T1_DEPLOYMENT)
+            {
+              if (elapsed_time < AB_T2_CLOSE)
+                {
+                  full_open ();
+                }
+              else
+                {
+                  full_close ();
+                  break;
+                }
+            }
+
         }
       else if (currentState > STATE_PRIMARY)
         {

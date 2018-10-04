@@ -15,7 +15,7 @@
 void TK_state_machine (void const * argument)
 {
 
-  osDelay (1000);
+  osDelay (2000);
 
   // Declare time variable
   uint32_t time_tmp = 0;
@@ -31,7 +31,7 @@ void TK_state_machine (void const * argument)
   float32_t calibData[CALIB_BARO_BUFFER_SIZE];
 
   // Declare apogee detection variables
-  uint32_t max_altitude = calib_initial_altitude;
+  float32_t max_altitude = calib_initial_altitude;
   uint32_t apogee_counter = 0;
 
   // Declare secondary recovery event detection variables
@@ -80,6 +80,10 @@ void TK_state_machine (void const * argument)
           baroIsReady = 0; // set new data flag to false
         }
 
+      if (LIFTOFF_TIME != 0 && (HAL_GetTick() - LIFTOFF_TIME) > 4 * 60 * 1000) {
+          currentState = STATE_TOUCHDOWN;
+      }
+
       // State Machine
       switch (currentState)
         {
@@ -123,12 +127,12 @@ void TK_state_machine (void const * argument)
               {
 
                 // Compute lift-off triggers for acceleration
-                uint8_t liftoffAccelTrig = (abs_fl32 (imu_data->acceleration.y) > 2);
+                uint8_t liftoffAccelTrig = (abs_fl32 (imu_data->acceleration.y) > ROCKET_CST_LIFTOFF_TRIG_ACCEL);
 
                 if (LIFTOFF_TIME != 0)
                   {
                     //already detected the acceleration trigger. now we need the trigger for at least 1000ms before trigerring the liftoff.
-                    if (liftoffAccelTrig && LIFTOFF_TIME - HAL_GetTick () > 200)
+                    if (liftoffAccelTrig && LIFTOFF_TIME - HAL_GetTick () > 500)
                       {
                         currentState = STATE_LIFTOFF; // Switch to lift-off state
                         longBip();
@@ -200,7 +204,7 @@ void TK_state_machine (void const * argument)
                       {
                         // ... then the altitude trigger based on the counter is enabled
                         counterAltTrig = 1;
-                        if ((max_altitude - baro_data->altitude) > APOGEE_ALT_DIFF)
+                        if (( max_altitude - baro_data->altitude) > APOGEE_ALT_DIFF)
                         // since the rocket is then supposed to be descending, the trigger waits for an altitude offset greater than the one defined to occure before triggering the state change
                           {
                             diffAltTrig = 1;
@@ -222,6 +226,7 @@ void TK_state_machine (void const * argument)
 
         case STATE_PRIMARY:
           {
+            longBip();
             if (baroIsReady)
               {
                 // check that some time has passed since the detection of the apogee before triggering the secondary recovery event
@@ -260,7 +265,7 @@ void TK_state_machine (void const * argument)
 
         case STATE_SECONDARY:
           {
-
+            longBip();
             uint8_t counterTdTrig = 0;
 
             // if a given time has passed since the last time the check was done, do the check
@@ -305,6 +310,11 @@ void TK_state_machine (void const * argument)
 
         case STATE_TOUCHDOWN:
           {
+
+            for(;;) {
+                longBip();
+                osDelay(1000);
+            }
 
             break;
           }

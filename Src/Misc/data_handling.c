@@ -26,6 +26,7 @@ const TCHAR sensor_file_header[] =
     "Seq num, timestamp, pressure, temperature, altitude, acc (mg) xyz, gyro(rps) xyz, mag(uT) xyz\r\n";
 const TCHAR events_file_header[] = "timestamp, event_description\r\n";
 char buffer[2048];
+uint8_t file_closed = 0;
 
 extern struct bno055_accel_float_t f_accel_xyz;
 extern struct bno055_gyro_float_t f_gyro_xyz;
@@ -102,24 +103,30 @@ osStatus initSdFile ()
 
 void SD_Error ()
 {
-  uint8_t repeat = 1;
-  while (repeat--)
-    {
-      HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
-      osDelay (75);
-      HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
-      osDelay (75);
-    }
+  /*
+   uint8_t repeat = 1;
+   while (repeat--)
+   {
+   HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
+   osDelay (75);
+   HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+   osDelay (75);
+   }
+   */
 }
 
 void TK_data (void const * args)
 {
-  osDelay (700);
+  osDelay (200);
 
   if (initSdFile () != osOK)
     {
       HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
-      osDelay (2000);
+      osDelay (200);
+      HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
+      osDelay (200);
+      HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_SET);
+      osDelay (200);
       HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, GPIO_PIN_RESET);
 
       for (;;)
@@ -127,11 +134,15 @@ void TK_data (void const * args)
           osDelay (portMAX_DELAY);
         }
     }
+  else
+    {
+      longBip ();
+    }
 
   uint32_t lastImuSeqNumber = 0, lastBaroSeqNumber = 0, telemetrySeqNumber = 0;
   UINT bytes_written = 0;
-  f_write (&sensorsFile, sensor_file_header, sizeof(sensor_file_header), &bytes_written);
-  f_write (&eventsFile, events_file_header, sizeof(events_file_header), &bytes_written);
+  f_write (&sensorsFile, sensor_file_header, strlen(sensor_file_header), &bytes_written);
+  f_write (&eventsFile, events_file_header, strlen(events_file_header), &bytes_written);
 
   uint32_t lastSync = HAL_GetTick ();
 
@@ -141,6 +152,14 @@ void TK_data (void const * args)
 
   for (;;)
     {
+      if (currentState == STATE_TOUCHDOWN && !file_closed) {
+          f_close(&sensorsFile);
+          f_close(&eventsFile);
+          file_closed = 1;
+          for (;;) {
+              osDelay(portMAX_DELAY);
+          }
+      }
       uint32_t measurement_time = HAL_GetTick ();
 
       IMU_data* imu_data = &IMU_buffer[currentImuSeqNumber % CIRC_BUFFER_SIZE];
@@ -149,18 +168,14 @@ void TK_data (void const * args)
       lastImuSeqNumber = currentImuSeqNumber;
       lastBaroSeqNumber = currentBaroSeqNumber;
 
-      sprintf (buffer,
-               "%lu, %lu, "
+      sprintf (buffer, "%lu, %lu, "
                "%f, %f, %f, "
                "%f, %f, %f, "
                "%f, %f, %f, "
                "%f, %f, %f\r\n",
-               telemetrySeqNumber++, measurement_time,
-               baro_data->pressure, baro_data->temperature, baro_data->altitude,
-               imu_data->acceleration.x, imu_data->acceleration.y, imu_data->acceleration.z,
-               imu_data->gyro_rps.x, imu_data->gyro_rps.y, imu_data->gyro_rps.z,
-               imu_data->mag_uT.x, imu_data->mag_uT.y, imu_data->mag_uT.z
-      );
+               telemetrySeqNumber++, measurement_time, baro_data->pressure, baro_data->temperature, baro_data->altitude,
+               imu_data->acceleration.x, imu_data->acceleration.y, imu_data->acceleration.z, imu_data->gyro_rps.x,
+               imu_data->gyro_rps.y, imu_data->gyro_rps.z, imu_data->mag_uT.x, imu_data->mag_uT.y, imu_data->mag_uT.z);
 
       f_write (&sensorsFile, buffer, strlen (buffer), &bytes_written);
 

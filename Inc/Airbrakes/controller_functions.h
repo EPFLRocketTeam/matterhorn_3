@@ -13,6 +13,7 @@ void airbrake_rxCpltCallback();
 void controller_test(void);
 void aerobrakes_control_init(void);
 void full_close(void);
+void full_open(void);
 void aerobrake_helloworld(void);
 void command_aerobrake_controller(float altitude, float speed);
 float angle_tab(float altitude, float speed);

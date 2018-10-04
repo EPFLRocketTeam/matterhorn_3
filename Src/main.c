@@ -485,7 +485,6 @@ __weak void StartDefaultTask(void const * argument)
   for (;;)
     {
       osDelay (10000000);
-
     }
   /* USER CODE END 5 */ 
 }

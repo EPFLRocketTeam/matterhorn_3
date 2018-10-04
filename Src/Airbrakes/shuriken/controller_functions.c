@@ -82,6 +82,13 @@ void aerobrakes_control_init (void)
   return;
 }
 
+void full_open (void)
+{
+  int angle_open_inc = tab_deg_to_inc_converter (MAX_OPENING_DEG);
+  motor_goto_position_inc (angle_open_inc);
+  return;
+}
+
 void full_close (void)
 {
   int angle_close_inc = tab_deg_to_inc_converter (0.0);

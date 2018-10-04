@@ -23,17 +23,20 @@
  * ROCKET PARAMETERS
  */
 
-#define ROCKET_CST_LIFTOFF_TRIG_ACCEL 4 // acceleration lift-off detection trigger [g]
-#define ROCKET_CST_MIN_TRIG_AGL 2000 // min altitude above ground level to allow apogee detection [m]
+#define ROCKET_CST_LIFTOFF_TRIG_ACCEL 3 // acceleration lift-off detection trigger [g]
+#define ROCKET_CST_MIN_TRIG_AGL 1300 // min altitude above ground level to allow apogee detection [m]
 #define ROCKET_CST_MOTOR_BURNTIME 6500 // motor burn time [ms]
 #define ROCKET_CST_REC_SECONDARY_ALT 200 // altitude of secondary recovery event [m]
+
+#define AB_T1_DEPLOYMENT 6215
+#define AB_T2_CLOSE 12465
 
 /*
  * STATE MACHINE PARAMETERS
  */
 
-#define APOGEE_BUFFER_SIZE 5 // Number of descending altitude events before the apogee detection is triggered
-#define APOGEE_ALT_DIFF 0 // meters below the apogee that allow the state to be triggered
+#define APOGEE_BUFFER_SIZE 100 // Number of descending altitude events before the apogee detection is triggered
+#define APOGEE_ALT_DIFF 1 // meters below the apogee that allow the state to be triggered
 #define APOGEE_MUTE_TIME 5000 // sensor mute time in ms such that the over-pressure of ejection doesn't trigger a state by accident
 #define SECONDARY_BUFFER_SIZE 5 // Number of descending altitude events before the secondary recovery altitude detection is triggered
 #define TOUCHDOWN_DELAY_TIME 5000 // delay time in ms between two evaluations of the touch-down event
