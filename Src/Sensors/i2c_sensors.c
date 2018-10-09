@@ -215,9 +215,9 @@ void TK_fetch_i2c ()
        */
 
       BARO_data* new_data = &BARO_buffer[(currentBaroSeqNumber + 1) % CIRC_BUFFER_SIZE];
-      new_data->pressure = pres;
+      new_data->pressure = pres/100.0;
       new_data->temperature = temp;
-      new_data->altitude = altitudeFromPressure (pres);
+      new_data->altitude = altitudeFromPressure (pres/100.0);
 
 #if DEBUG
       sprintf (buf, "T: %f, P: %f\r\n", temp, press);

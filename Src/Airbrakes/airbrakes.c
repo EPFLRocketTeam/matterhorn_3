@@ -46,7 +46,7 @@ void TK_ab_controller (void const * argument)
 
 #endif
 
-  while (LIFTOFF_TIME == 0)
+  while (currentState < STATE_COAST)
     {
       osDelay (1);
     }
