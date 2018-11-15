@@ -81,6 +81,8 @@ osThreadId data_mgmtHandle;
 osThreadId airbrakes_ctrlHandle;
 osThreadId state_machineHandle;
 osThreadId physical_ifaceHandle;
+osThreadId sdWriteHandle;
+osMessageQId sdLoggingQueueHandle;
 osSemaphoreId i2cSensorsSemHandle;
 
 /* USER CODE BEGIN PV */
@@ -110,6 +112,7 @@ extern void TK_data(void const * argument);
 extern void TK_ab_controller(void const * argument);
 extern void TK_state_machine(void const * argument);
 extern void TK_physical_iface(void const * argument);
+extern void TK_sd_sync(void const * argument);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -202,9 +205,19 @@ int main(void)
   osThreadDef(physical_iface, TK_physical_iface, osPriorityHigh, 0, 256);
   physical_ifaceHandle = osThreadCreate(osThread(physical_iface), NULL);
 
+  /* definition and creation of sdWrite */
+  osThreadDef(sdWrite, TK_sd_sync, osPriorityBelowNormal, 0, 1024);
+  sdWriteHandle = osThreadCreate(osThread(sdWrite), NULL);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
+
+  /* Create the queue(s) */
+  /* definition and creation of sdLoggingQueue */
+/* what about the sizeof here??? cd native code */
+  osMessageQDef(sdLoggingQueue, 16, String_Message);
+  sdLoggingQueueHandle = osMessageCreate(osMessageQ(sdLoggingQueue), NULL);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */

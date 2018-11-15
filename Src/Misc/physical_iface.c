@@ -58,5 +58,5 @@ void longBip ()
 {
   buzzerStartTime = HAL_GetTick ();
   buzzerDelayMs = 1000;
-  HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, SET);
+//HAL_GPIO_WritePin (BUZZER_GPIO_Port, BUZZER_Pin, SET);
 }

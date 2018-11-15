@@ -41,7 +41,7 @@ typedef struct
 {
   void* ptr;
   uint16_t size;
-} Telemetry_Message;
+} String_Message;
 
 #ifdef __cplusplus
  }

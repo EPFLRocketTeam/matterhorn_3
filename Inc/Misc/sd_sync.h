@@ -6,6 +6,7 @@
  */
 
 #include <Misc/datastructs.h>
+#include "cmsis_os.h"
 
 #ifndef DATA_HANDLING_H_
 #define DATA_HANDLING_H_
@@ -15,7 +16,7 @@ extern "C"
   {
 #endif
 
-void TK_data (const void* args);
+void TK_sd_sync (const void* args);
 
 osStatus initSdFile ();
 
