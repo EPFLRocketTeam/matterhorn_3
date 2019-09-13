@@ -27,6 +27,7 @@
 #define ROCKET_CST_MIN_TRIG_AGL 1300 // min altitude above ground level to allow apogee detection [m]
 #define ROCKET_CST_MOTOR_BURNTIME 6500 // motor burn time [ms]
 #define ROCKET_CST_REC_SECONDARY_ALT 200 // altitude of secondary recovery event [m]
+#define LIFTOFF_DETECTION_DELAY 500 // delay to trigger the liftoff event [ms]
 
 #define AB_T1_DEPLOYMENT 6215
 #define AB_T2_CLOSE 12465
