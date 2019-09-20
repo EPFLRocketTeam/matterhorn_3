@@ -1,3 +1,7 @@
+This repository is archived and was used for the first version of the SW.
+Further development, taking advantage of the Eiger code base can be found: in the [Eiger Git page](https://github.com/EPFLRocketTeam/Eiger/), in the `flight-sw` folder ([link](https://github.com/EPFLRocketTeam/Eiger/tree/master/flight-sw/matterhorn_3))
+
+
 # Matterhorn 3 - AV software
 
 This repository contains the software for Alexandre Devienne's shield, that incorporates a uSD module, a BNO055 IMU, a BMP280 barometer, a buzzer, a MAX3232 to ouput RS232 signal used to command an motor controller.
